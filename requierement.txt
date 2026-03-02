@@ -1,0 +1,11 @@
+et_xmlfile==2.0.0
+geographiclib==2.1
+geopy==2.4.1
+gpxpy==1.6.2
+nominatim==0.1
+numpy==2.4.2
+openpyxl==3.1.5
+pandas==3.0.1
+python-dateutil==2.9.0.post0
+six==1.17.0
+tqdm==4.67.3
