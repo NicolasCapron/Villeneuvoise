@@ -4,6 +4,8 @@ from geopy.geocoders import Nominatim
 import time
 from tqdm import tqdm  
 from pathlib import Path
+import ssl
+import certifi
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -23,8 +25,9 @@ vitesse_tete = 30  # km/h (tête de course)
 vitesse_milieu = 25  # km/h (milieu de course)
 vitesse_fin = 20  # km/h (fin de course)
 
-# 📍 Initialisation du géocodeur
-geolocator = Nominatim(user_agent="rando-cyclo")
+# 📍 Initialisation du géocodeur avec certificats SSL macOS
+ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+geolocator = Nominatim(user_agent="rando-cyclo", ssl_context=ssl_ctx)
 
 # 📌 Stockage des données
 tables_parcours = {}  # Stockera les DataFrames des parcours
@@ -56,16 +59,22 @@ for parcours, file in gpx_files.items():
 
         try:
             location = geolocator.reverse((point.latitude, point.longitude), language="fr", timeout=10)
-            address = location.raw.get("address", {})
-            commune = address.get("village") or address.get("town") or address.get("city", "Inconnu")
-            rue = address.get("road", "Rue inconnue")
-            pays = address.get("country", "Inconnu")
+            if location is None:
+                commune, rue, pays = "Inconnu", "Rue inconnue", "Inconnu"
+            else:
+                address = location.raw.get("address", {})
+                commune = address.get("village") or address.get("town") or address.get("city", "Inconnu")
+                rue = address.get("road", "Rue inconnue")
+                pays = address.get("country", "Inconnu")
 
-            # 🚫 Ignorer les points sur une autoroute
-            if rue in ["A23", "A1","A22","A27","E42","E403"]:
-                continue
+                # 🚫 Ignorer les points sur une autoroute
+                if rue in ["A23", "A1","A22","A27","E42","E403"]:
+                    prev_point = point
+                    time.sleep(1)
+                    continue
 
-        except:
+        except Exception as e:
+            print(f"\n⚠️  Erreur géocodage ({point.latitude:.5f}, {point.longitude:.5f}) : {type(e).__name__}: {e}")
             commune, rue, pays = "Inconnu", "Rue inconnue", "Inconnu"
 
         # ⚡ Supprimer les doublons consécutifs (même commune et même rue)
@@ -75,7 +84,7 @@ for parcours, file in gpx_files.items():
 
         communes_traversees.add(commune)
         prev_point = point
-        time.sleep(0.2)  
+        time.sleep(1)  # Nominatim : max 1 requête/seconde
 
     # 📋 Création du DataFrame pour le parcours
     df_horaire = pd.DataFrame(table_horaire, columns=["Distance (km)", "Commune", "Rue", "Pays"])
