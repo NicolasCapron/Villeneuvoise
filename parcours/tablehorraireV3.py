@@ -30,8 +30,9 @@ ssl_ctx = ssl.create_default_context(cafile=certifi.where())
 geolocator = Nominatim(user_agent="rando-cyclo", ssl_context=ssl_ctx)
 
 # 📌 Stockage des données
-tables_parcours = {}  # Stockera les DataFrames des parcours
-communes_parcours = {}  # Stockera les communes traversées par parcours
+tables_parcours = {}     # Stockera les DataFrames des parcours
+communes_parcours = {}   # Stockera les communes traversées par parcours
+total_distances = {}     # Stockera la distance totale de chaque parcours
 
 # 📌 Boucle sur chaque fichier GPX
 for parcours, file in gpx_files.items():
@@ -116,8 +117,39 @@ for parcours, file in gpx_files.items():
     # 🗂 Stockage des données du parcours
     tables_parcours[parcours] = df_horaire
     communes_parcours[parcours] = sorted(communes_traversees)
+    total_distances[parcours] = total_distance
 
-# 📤 Générer le fichier Excel avec les parcours séparés
+# � Calcul des kilomètres par commune (par passage consécutif)
+def compute_km_par_commune(df, total_dist):
+    """Pour chaque passage consécutif dans une commune,
+    calcule le km d'entrée, de sortie et le km moyen.
+    Si une commune est traversée plusieurs fois, elle apparaît autant de fois."""
+    rows = []
+    distances = df["Distance (km)"].tolist()
+    communes = df["Commune"].tolist()
+
+    i = 0
+    while i < len(communes):
+        commune = communes[i]
+        entry_km = distances[i]
+        # Avancer tant qu'on reste dans la même commune (rues différentes possibles)
+        j = i + 1
+        while j < len(communes) and communes[j] == commune:
+            j += 1
+        # Km de sortie = début du prochain passage, ou distance totale en fin de parcours
+        exit_km = distances[j] if j < len(communes) else total_dist
+        avg_km = (entry_km + exit_km) / 2
+        rows.append({
+            "Commune": commune,
+            "Km entrée": round(entry_km, 2),
+            "Km sortie": round(exit_km, 2),
+            "Km moyen territoire": round(avg_km, 2),
+            "Distance territoire (km)": round(exit_km - entry_km, 2),
+        })
+        i = j
+    return pd.DataFrame(rows)
+
+# �📤 Générer le fichier Excel avec les parcours séparés
 excel_file = "Villeneuvoise_Horaires.xlsx"
 with pd.ExcelWriter(BASE_DIR / excel_file, engine="openpyxl") as writer:
     # ✅ Feuilles des parcours
@@ -131,6 +163,20 @@ with pd.ExcelWriter(BASE_DIR / excel_file, engine="openpyxl") as writer:
         axis=1
     )
     df_communes.to_excel(writer, sheet_name="Communes Traversées", index=False)
+
+    # ✅ Feuille "Km par Commune" — passages consécutifs avec km d'entrée/sortie/moyen
+    dfs_km = []
+    for parcours, df in tables_parcours.items():
+        df_km = compute_km_par_commune(df, total_distances[parcours])
+        df_km.columns = [f"{col} - {parcours}" for col in df_km.columns]
+        dfs_km.append(df_km)
+
+    max_rows_km = max(len(df) for df in dfs_km)
+    df_km_final = pd.concat(
+        [df.reindex(range(max_rows_km)) for df in dfs_km],
+        axis=1
+    )
+    df_km_final.to_excel(writer, sheet_name="Km par Commune", index=False)
 
 
 print(f"\n✅ Fichier unique généré : {excel_file}")
