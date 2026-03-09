@@ -9,15 +9,13 @@ import certifi
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# 📂 Liste des fichiers GPX à traiter
-gpx_files = {
-    "Gravel 47KM": "gravel_47_klms-20445061-1737809159-847.gpx",
-    "Gravel 85KM": "gravel_vers_st_aubert-20439279-1737809122-705.gpx",
-    "Circuit Route old": "4_2024_la_villeuvoise_116_kms-15292374-1738056578-82.gpx",
-    "Circuit Route ": "4_2024_la_villeuvoise_116_kms-15292374-1738056578-82.gpx"
-}
+# 📂 Liste des fichiers GPX à traiters
+gpx_files = {f.stem: f.name for f in BASE_DIR.glob("*.gpx")}
+if not gpx_files:
+    print("❌ Aucun fichier GPX trouvé. Veuillez vérifier les chemins et les noms de fichiers.")
+    exit(1) 
 
-# ⏳ Heure limite d'arrivée
+# ⏳ Heure limite d'arrivé
 heure_limite_arrivee = pd.to_datetime("13:00:00")
 
 # 🏁 Vitesses définies
