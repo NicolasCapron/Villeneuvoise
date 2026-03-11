@@ -7,7 +7,7 @@ from pathlib import Path
 import ssl
 import certifi
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent / "parcours"  # Assurez-vous que ce dossier existe et contient les fichiers GPX
 
 # 📂 Liste des fichiers GPX à traiters
 gpx_files = {f.stem: f.name for f in BASE_DIR.glob("*.gpx")}
