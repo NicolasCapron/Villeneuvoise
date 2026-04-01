@@ -1,0 +1,307 @@
+<Window x:Class="VilleneuvoisePlanner.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:VilleneuvoisePlanner.ViewModels"
+        xmlns:conv="clr-namespace:VilleneuvoisePlanner.Converters"
+        xmlns:mapsui="clr-namespace:Mapsui.UI.Wpf;assembly=Mapsui.UI.Wpf"
+        Title="Villeneuvoise Planner" Height="760" Width="1280"
+        WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded">
+
+    <Window.DataContext>
+        <vm:MainViewModel />
+    </Window.DataContext>
+
+    <Window.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:BoolToVisibilityConverter x:Key="InvBoolToVis" Invert="True" />
+        <conv:StringToColorBrushConverter x:Key="ColorBrush" />
+
+        <Style x:Key="ToolBtn" TargetType="Button">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="MinWidth" Value="120" />
+        </Style>
+
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#2C3E50" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+
+        <!-- ── Toolbar ───────────────────────────────────────────────── -->
+        <ToolBar DockPanel.Dock="Top" Height="38">
+            <Button Style="{StaticResource ToolBtn}"
+                    Command="{Binding ImportGpxCommand}"
+                    Content="📂  Importer GPX" />
+            <Separator />
+            <Button Style="{StaticResource ToolBtn}"
+                    Command="{Binding ProcessAllRoutesCommand}"
+                    Content="{Binding ProcessButtonText}" />
+            <Button Style="{StaticResource ToolBtn}"
+                    Command="{Binding RecalculateScheduleCommand}"
+                    Content="🔄  Recalculer" />
+            <Separator />
+            <Button Style="{StaticResource ToolBtn}"
+                    Command="{Binding ExportToExcelCommand}"
+                    Content="📊  Exporter Excel" />
+        </ToolBar>
+
+        <!-- ── Status bar ─────────────────────────────────────────────── -->
+        <StatusBar DockPanel.Dock="Bottom" Height="26">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText}" />
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <ProgressBar Width="220" Height="14"
+                             Minimum="0"
+                             Maximum="{Binding ProgressMax}"
+                             Value="{Binding ProgressValue}"
+                             Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVis}}" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- ── Main layout ────────────────────────────────────────────── -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240" MinWidth="160" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Left panel : liste des parcours ───────────────────── -->
+            <DockPanel Grid.Column="0" Margin="6">
+                <TextBlock DockPanel.Dock="Top" Text="Parcours chargés"
+                           Style="{StaticResource SectionHeader}" />
+
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Content="+ Importer" Command="{Binding ImportGpxCommand}"
+                            Padding="8,4" Margin="0,0,4,0" />
+                    <Button Content="✕ Supprimer" Command="{Binding RemoveRouteCommand}"
+                            Padding="8,4" />
+                </StackPanel>
+
+                <ListBox ItemsSource="{Binding Routes}"
+                         SelectedItem="{Binding SelectedRoute}"
+                         SelectionChanged="RouteList_SelectionChanged"
+                         BorderThickness="1" BorderBrush="#CCCCCC">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="4,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="20" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Couleur de la route -->
+                                <Ellipse Grid.Column="0" Width="10" Height="10"
+                                         Fill="{Binding RouteColor, Converter={StaticResource ColorBrush}}"
+                                         VerticalAlignment="Center" />
+
+                                <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding DisplayInfo}" FontSize="11"
+                                               Foreground="#666666" />
+                                </StackPanel>
+
+                                <!-- Icône statut -->
+                                <TextBlock Grid.Column="2" Text="✓" Foreground="#27AE60"
+                                           FontWeight="Bold" VerticalAlignment="Center"
+                                           Visibility="{Binding IsProcessed, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Grid.Column="2" Text="⏳" VerticalAlignment="Center"
+                                           Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- ── GridSplitter ───────────────────────────────────────── -->
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="#E0E0E0" />
+
+            <!-- ── Onglets droite ─────────────────────────────────────── -->
+            <TabControl Grid.Column="2" Margin="4">
+
+                <!-- Carte OSM -->
+                <TabItem Header="🗺  Carte">
+                    <Grid>
+                        <mapsui:MapControl x:Name="mapControl" />
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Margin="8" Panel.ZIndex="10">
+                            <Button Content="Centrer sélection" Click="BtnCenter_Click"
+                                    Padding="8,4" Margin="0,0,6,0" Opacity="0.85" />
+                            <Button Content="Tout afficher" Click="BtnFitAll_Click"
+                                    Padding="8,4" Opacity="0.85" />
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- Tableau horaire -->
+                <TabItem Header="⏱  Tableau horaire">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal"
+                                    Margin="8,6" VerticalAlignment="Center">
+                            <TextBlock Text="Parcours :" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox ItemsSource="{Binding Routes}"
+                                      SelectedItem="{Binding SelectedRoute}"
+                                      DisplayMemberPath="Name"
+                                      Width="220" />
+                        </StackPanel>
+
+                        <DataGrid ItemsSource="{Binding SelectedRoute.ScheduleEntries}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  AlternatingRowBackground="#F5F5F5"
+                                  GridLinesVisibility="Horizontal"
+                                  HeadersVisibility="Column">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="km" Binding="{Binding DistanceStr}" Width="65" />
+                                <DataGridTextColumn Header="Commune" Binding="{Binding Commune}" Width="140" />
+                                <DataGridTextColumn Header="Rue / Voie" Binding="{Binding Street}" Width="200" />
+                                <DataGridTextColumn Header="Région" Binding="{Binding Region}" Width="130" />
+                                <DataGridTextColumn Header="Pays" Binding="{Binding Country}" Width="90" />
+                                <DataGridTextColumn Header="Tête  30 km/h" Binding="{Binding HeadTimeStr}" Width="105" />
+                                <DataGridTextColumn Header="Milieu  25 km/h" Binding="{Binding PelotonTimeStr}" Width="115" />
+                                <DataGridTextColumn Header="Queue  20 km/h" Binding="{Binding TailTimeStr}" Width="115" />
+                                <DataGridTextColumn Header="Barrière horaire" Binding="{Binding TimeBarrierStr}" Width="120" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+
+                <!-- Communes traversées -->
+                <TabItem Header="🏘  Communes">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal"
+                                    Margin="8,6" VerticalAlignment="Center">
+                            <TextBlock Text="Parcours :" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox ItemsSource="{Binding Routes}"
+                                      SelectedItem="{Binding SelectedRoute}"
+                                      DisplayMemberPath="Name"
+                                      Width="220" />
+                        </StackPanel>
+
+                        <DataGrid ItemsSource="{Binding SelectedRoute.CommuneKmEntries}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  AlternatingRowBackground="#F5F5F5"
+                                  GridLinesVisibility="Horizontal"
+                                  HeadersVisibility="Column">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Commune" Binding="{Binding Commune}" Width="180" />
+                                <DataGridTextColumn Header="Km entrée" Binding="{Binding EntryKm, StringFormat=F2}" Width="90" />
+                                <DataGridTextColumn Header="Km sortie" Binding="{Binding ExitKm, StringFormat=F2}" Width="90" />
+                                <DataGridTextColumn Header="Km moyen" Binding="{Binding AvgKm, StringFormat=F2}" Width="90" />
+                                <DataGridTextColumn Header="Distance territoire (km)" Binding="{Binding TerritoryDistanceKm, StringFormat=F2}" Width="170" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+
+                <!-- Paramètres -->
+                <TabItem Header="⚙  Paramètres">
+                    <ScrollViewer Margin="16" VerticalScrollBarVisibility="Auto">
+                        <StackPanel MaxWidth="500">
+
+                            <TextBlock Text="Heures de départ" Style="{StaticResource SectionHeader}" />
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30" />
+                                    <RowDefinition Height="30" />
+                                    <RowDefinition Height="30" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tête de course (HH:MM:SS) :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Margin="0,2"
+                                         Text="{Binding Settings.DepartureHead, StringFormat=hh\\:mm\\:ss}" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Milieu de course :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Margin="0,2"
+                                         Text="{Binding Settings.DepartureMid, StringFormat=hh\\:mm\\:ss}" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Queue de course :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Margin="0,2"
+                                         Text="{Binding Settings.DepartureTail, StringFormat=hh\\:mm\\:ss}" />
+                            </Grid>
+
+                            <TextBlock Text="Vitesses (km/h)" Style="{StaticResource SectionHeader}" />
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30" />
+                                    <RowDefinition Height="30" />
+                                    <RowDefinition Height="30" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tête de course :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Margin="0,2"
+                                         Text="{Binding Settings.SpeedHead}" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Milieu :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Margin="0,2"
+                                         Text="{Binding Settings.SpeedMid}" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Queue :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Margin="0,2"
+                                         Text="{Binding Settings.SpeedTail}" />
+                            </Grid>
+
+                            <TextBlock Text="Barrière horaire" Style="{StaticResource SectionHeader}" />
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Heure limite arrivée :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding Settings.TimeLimit, StringFormat=hh\\:mm\\:ss}" />
+                            </Grid>
+
+                            <TextBlock Text="Géocodage" Style="{StaticResource SectionHeader}" />
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Pas d'échantillonnage (km) :"
+                                           VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding Settings.SamplingDistanceKm}"
+                                         ToolTip="Distance entre chaque appel Nominatim. 0.1 = 100 m (recommandé). Valeur plus grande = plus rapide mais moins précis." />
+                            </Grid>
+
+                            <Button Content="🔄  Appliquer et recalculer les horaires"
+                                    Command="{Binding RecalculateScheduleCommand}"
+                                    Padding="12,6" HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+            </TabControl>
+        </Grid>
+    </DockPanel>
+</Window>
